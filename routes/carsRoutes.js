@@ -37,10 +37,9 @@ router.post("/", requiredCarFields, async (req, res) => {
             validate: true
         })
 
-        return res.status(201).json({id: CarId})
+        res.status(201).json({id: CarId})
     } catch (err) {
-        console.log(err)
-        return res.status(500).json({error: "internal server error"})
+        res.status(500).json({error: "internal server error"})
     }
 })
 
@@ -79,38 +78,55 @@ router.get("/", async (req, res) => {
                 offset: Number((page * limit) - limit),
                 limit: limit
             })
-            console.log(data)
             return res.status(200).json({pages: lastpage, count: countCars, data: data})
         }
-        return res.status(204)
-    } catch (error) {
-        console.log(error)
-        return res.status(500).json({error: "internal server error"})
+        res.status(204).json()
+    } catch (err) {
+        res.status(500).json({error: "internal server error"})
     }
     
     
 })
 
 router.get("/:id", async(req,res) => {
-    const id = req.params.id
-    const carFound = await Car.findByPk(id)
-    if (carFound) {
-        const {brand, model, year} = carFound
-        
-        let items = await carFound.getCarItems()
-        items = items.map(item => item.name)
-        
-        return res.status(200).json({brand, model, year, items})
+    try {
+        const id = req.params.id
+        const carFound = await Car.findByPk(id)
+        if (carFound) {
+            const {brand, model, year} = carFound
+            
+            let items = await carFound.getCarItems()
+            items = items.map(item => item.name)
+            
+            return res.status(200).json({brand, model, year, items})
+        }
+        res.status(404).json({error: "car not found"})
+
+    } catch(err) {
+        res.status(500).json({error: "internal server error"})
     }
-    res.status(404).json({error: "car not found"})
+    
 })
 
 router.patch("/:id", (req,res) => {
     const id = req.params.id
 })
 
-router.delete("/:id", (req,res) => {
-    const id = req.params.id
+router.delete("/:id", async (req,res) => {
+    try {
+        const id = req.params.id
+        const car = await Car.findOne({where: { id }})
+        if (!car) {
+            return res.status(404).json({error: "car not found"})
+        }
+        await CarItem.destroy({where: { CarId:id }})
+        await Car.destroy({where: { id }})
+        
+        res.status(204).json()
+
+    } catch(err) {
+        res.status(500).json({error: "internal server error"})
+    }
 })
 
 
