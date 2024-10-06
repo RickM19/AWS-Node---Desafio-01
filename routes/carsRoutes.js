@@ -37,15 +37,58 @@ router.post("/", requiredCarFields, async (req, res) => {
             validate: true
         })
 
-        res.status(201).json({id: CarId})
+        return res.status(201).json({id: CarId})
     } catch (err) {
         console.log(err)
-        res.status(500).json({error: "internal server error"})
+        return res.status(500).json({error: "internal server error"})
     }
 })
 
-router.get("/", (req, res) => {
-    const {page, limit, brand, model, year} = req.query
+router.get("/", async (req, res) => {
+    try {
+        const {page = 1, brand, model, year} = req.query
+        let limit = Number(req.query.limit)
+        if (!limit || (limit < 1)) {
+            limit = 5
+        }
+        if (limit > 10) {
+            limit = 10
+        }
+        let lastpage = 1
+        const whereFilter = {}
+        if (brand) {
+            whereFilter.brand = brand
+        }
+        if (model) {
+            whereFilter.model = model
+        }
+        if (year) {
+            whereFilter.year = year
+        }
+
+        const countCars = await Car.count({
+            where: whereFilter
+        })
+
+        lastpage = Math.ceil(countCars / limit)
+
+        if (countCars !== 0 && lastpage >= page) {
+            const data = await Car.findAll({
+                where: whereFilter,
+                attributes: ["id", "brand", "model", "year"],
+                offset: Number((page * limit) - limit),
+                limit: limit
+            })
+            console.log(data)
+            return res.status(200).json({pages: lastpage, count: countCars, data: data})
+        }
+        return res.status(204)
+    } catch (error) {
+        console.log(error)
+        return res.status(500).json({error: "internal server error"})
+    }
+    
+    
 })
 
 router.get("/:id", async(req,res) => {
