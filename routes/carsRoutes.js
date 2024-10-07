@@ -3,6 +3,7 @@ const router = express.Router()
 const Car = require("../models/Car")
 const CarItem = require("../models/CarItem")
 const requiredCarFields = require("../middlewares/requiredCarsFields")
+const { where } = require("sequelize")
 
 
 router.post("/", requiredCarFields, async (req, res) => {
@@ -17,8 +18,8 @@ router.post("/", requiredCarFields, async (req, res) => {
         }
         const existingCar = await Car.findOne({
                 where: {
-                    brand: brand,
-                    model: model,
+                    brand: brand.toLowerCase(),
+                    model: model.toLowerCase(),
                     year: year
                 }
             })
@@ -26,11 +27,15 @@ router.post("/", requiredCarFields, async (req, res) => {
             return res.status(409).json({error: "there is already car with this data"})
         }
         
-        const newCar = await Car.create({brand, model, year})
+        const newCar = await Car.create({
+                    brand: brand.toLowerCase(),
+                    model: model.toLowerCase(),
+                    year
+                })
         const CarId = newCar.id
 
         items = items.map(item => ({
-            name: item,
+            name: item.toLowerCase(),
             CarId: CarId
         }))
         await CarItem.bulkCreate(items, {
@@ -56,10 +61,10 @@ router.get("/", async (req, res) => {
         let lastpage = 1
         const whereFilter = {}
         if (brand) {
-            whereFilter.brand = brand
+            whereFilter.brand = brand.toLowerCase()
         }
         if (model) {
-            whereFilter.model = model
+            whereFilter.model = model.toLowerCase()
         }
         if (year) {
             whereFilter.year = year
@@ -75,7 +80,7 @@ router.get("/", async (req, res) => {
             const data = await Car.findAll({
                 where: whereFilter,
                 attributes: ["id", "brand", "model", "year"],
-                offset: Number((page * limit) - limit),
+                offset: Number((+page * limit) - limit),
                 limit: limit
             })
             return res.status(200).json({pages: lastpage, count: countCars, data: data})
@@ -108,8 +113,53 @@ router.get("/:id", async(req,res) => {
     
 })
 
-router.patch("/:id", (req,res) => {
-    const id = req.params.id
+router.patch("/:id", async (req,res) => {
+    try {
+        const id = req.params.id
+        const car = await Car.findOne({where: { id }, attributes: ["brand", "model", "year"], raw: true})
+        if (!car) {
+            return res.status(404).json({error: "car not found"})
+        }
+        const {brand, model} = req.body
+        const year = parseInt(req.body.year)
+        let items = req.body.items
+        const newCar = {...car}
+
+        if (brand) {
+            newCar.brand = brand.toLowerCase()
+        }
+        if (model) {
+            newCar.model = model.toLowerCase()
+        }
+        if (year) {
+            const currentYear = new Date().getFullYear()
+            if ((currentYear - year) > 10) {
+                return res.status(400).json({error: `year should between ${currentYear - 10} and ${currentYear}`})
+            }
+            newCar.year = year
+        }
+        const existingCar = await Car.findOne({where: newCar})
+        if (existingCar) {
+            return res.status(409).json({error: "there is already car with this data"})
+        }
+        if (items) {
+            items = [...new Set(req.body.items)]
+            await CarItem.destroy({where: { CarId:id }})
+            items = items.map(item => ({
+                name: item.toLowerCase(),
+                CarId: id
+            }))
+            await CarItem.bulkCreate(items, {
+                validate: true
+            })
+        }
+        await Car.update(newCar, { where: {id}})
+        
+        res.status(204).json()
+    } catch (err) {
+        res.status(500).json({error: "internal server error"})
+    }
+    
 })
 
 router.delete("/:id", async (req,res) => {
